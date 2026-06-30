@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="GeoSphere Temperatur">
+  <rect width="512" height="512" rx="112" fill="#f4f4f5"/>
+  <rect x="48" y="48" width="416" height="416" rx="92" fill="#ffffff"/>
+  <path
+    d="M132 314c31 54 75 82 124 82 73 0 132-59 132-132S329 132 256 132c-50 0-93 27-116 67"
+    fill="none"
+    stroke="#0f766e"
+    stroke-width="34"
+    stroke-linecap="round"
+  />
+  <path
+    d="M142 206c26-18 61-29 104-29 64 0 115 38 115 86 0 49-51 86-115 86-42 0-77-10-103-28"
+    fill="none"
+    stroke="#14b8a6"
+    stroke-width="24"
+    stroke-linecap="round"
+    opacity="0.75"
+  />
+  <path
+    d="M256 126v268M124 260h264"
+    fill="none"
+    stroke="#d4d4d8"
+    stroke-width="12"
+    stroke-linecap="round"
+  />
+  <circle cx="256" cy="264" r="54" fill="#134e4a"/>
+  <path d="M256 206v68" fill="none" stroke="#ffffff" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="256" cy="306" r="14" fill="#ffffff"/>
+</svg>
