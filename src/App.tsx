@@ -161,14 +161,14 @@ function RecentStations({
   if (stations.length === 0) return null;
 
   return (
-    <div className="mt-5 border-t border-zinc-200 pt-4">
+    <div className="mt-5 min-w-0 w-full touch-pan-y overscroll-x-contain border-t border-zinc-200 pt-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
           Letzte Stationen
         </h2>
         <span className="font-mono text-xs text-zinc-400">{stations.length}/3</span>
       </div>
-      <div className="mt-3 grid gap-2">
+      <div className="mt-3 grid min-w-0 gap-2">
         {stations.map((station) => {
           const active = selectedStation?.id === station.id;
           return (
