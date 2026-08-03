@@ -6,6 +6,7 @@ import {
   MagnifyingGlass,
   MapPin,
   Mountains,
+  Star,
   ThermometerSimple,
 } from "@phosphor-icons/react";
 import {
@@ -22,6 +23,7 @@ import type { Station, TemperaturePoint, TemperatureSeries } from "./types";
 
 type LoadState = "idle" | "loading" | "ready" | "empty" | "error";
 const RECENT_STATIONS_KEY = "geosphere-recent-stations";
+const FAVORITE_STATIONS_KEY = "geosphere-favorite-stations";
 const MAX_RECENT_STATIONS = 3;
 
 const numberFormat = new Intl.NumberFormat("de-AT", {
@@ -61,11 +63,95 @@ function readRecentStations(): Station[] {
 }
 
 function writeRecentStations(stations: Station[]) {
-  window.localStorage.setItem(RECENT_STATIONS_KEY, JSON.stringify(stations.slice(0, MAX_RECENT_STATIONS)));
+  try {
+    window.localStorage.setItem(RECENT_STATIONS_KEY, JSON.stringify(stations.slice(0, MAX_RECENT_STATIONS)));
+  } catch {
+    // The app remains usable when browser storage is unavailable or full.
+  }
 }
 
 function addRecentStation(stations: Station[], station: Station) {
   return [station, ...stations.filter((item) => item.id !== station.id)].slice(0, MAX_RECENT_STATIONS);
+}
+
+function isNullableFiniteNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function isStation(value: unknown): value is Station {
+  if (!value || typeof value !== "object") return false;
+
+  const station = value as Record<string, unknown>;
+  return (
+    typeof station.id === "string" &&
+    station.id.trim().length > 0 &&
+    typeof station.name === "string" &&
+    station.name.trim().length > 0 &&
+    typeof station.state === "string" &&
+    isNullableFiniteNumber(station.altitude) &&
+    isNullableFiniteNumber(station.lat) &&
+    isNullableFiniteNumber(station.lon) &&
+    typeof station.type === "string" &&
+    station.type.trim().length > 0 &&
+    typeof station.isActive === "boolean"
+  );
+}
+
+function readFavoriteStations(): Station[] {
+  try {
+    const raw = window.localStorage.getItem(FAVORITE_STATIONS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const seen = new Set<string>();
+    return parsed.filter((station): station is Station => {
+      if (!isStation(station) || seen.has(station.id)) return false;
+      seen.add(station.id);
+      return true;
+    });
+  } catch {
+    return [];
+  }
+}
+
+function writeFavoriteStations(stations: Station[]) {
+  try {
+    window.localStorage.setItem(FAVORITE_STATIONS_KEY, JSON.stringify(stations));
+  } catch {
+    // The in-memory favorite state still works when storage is unavailable or full.
+  }
+}
+
+function FavoriteButton({
+  station,
+  isFavorite,
+  onToggle,
+  className = "",
+}: {
+  station: Station;
+  isFavorite: boolean;
+  onToggle: (station: Station) => void;
+  className?: string;
+}) {
+  const label = isFavorite
+    ? `${station.name} aus Favoriten entfernen`
+    : `${station.name} zu Favoriten hinzufügen`;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(station)}
+      aria-label={label}
+      aria-pressed={isFavorite}
+      title={label}
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-md border border-transparent text-zinc-400 transition duration-200 hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 active:scale-[0.96] ${
+        isFavorite ? "text-accent-600" : ""
+      } ${className}`}
+    >
+      <Star size={20} weight={isFavorite ? "fill" : "regular"} aria-hidden="true" />
+    </button>
+  );
 }
 
 function SearchSkeleton() {
@@ -109,11 +195,15 @@ function EmptyState({ title, text }: { title: string; text: string }) {
 function StationList({
   stations,
   selectedStation,
+  favoriteIds,
   onSelect,
+  onToggleFavorite,
 }: {
   stations: Station[];
   selectedStation: Station | null;
+  favoriteIds: Set<string>;
   onSelect: (station: Station) => void;
+  onToggleFavorite: (station: Station) => void;
 }) {
   if (stations.length === 0) return null;
 
@@ -122,27 +212,36 @@ function StationList({
       {stations.map((station, index) => {
         const active = selectedStation?.id === station.id;
         return (
-          <button
+          <div
             key={`${station.type}-${station.id}`}
-            type="button"
-            onClick={() => onSelect(station)}
-            className="flex w-full items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3 text-left transition duration-200 last:border-b-0 hover:bg-zinc-50 active:translate-y-[1px]"
+            className="flex items-center border-b border-zinc-100 pr-2 transition duration-200 last:border-b-0 hover:bg-zinc-50"
             style={{ animationDelay: `${index * 35}ms` }}
           >
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-zinc-950">{station.name}</span>
-              <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
-                <span>{station.state}</span>
-                <span>{formatAltitude(station.altitude)}</span>
-                <span>{station.type === "COMBINED" ? "Kombiniert" : "Station"}</span>
+            <button
+              type="button"
+              onClick={() => onSelect(station)}
+              className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-600 active:translate-y-[1px]"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-zinc-950">{station.name}</span>
+                <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+                  <span>{station.state}</span>
+                  <span>{formatAltitude(station.altitude)}</span>
+                  <span>{station.type === "COMBINED" ? "Kombiniert" : "Station"}</span>
+                </span>
               </span>
-            </span>
-            <span
-              className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                active ? "bg-accent-600" : "bg-zinc-200"
-              }`}
+              <span
+                className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                  active ? "bg-accent-600" : "bg-zinc-200"
+                }`}
+              />
+            </button>
+            <FavoriteButton
+              station={station}
+              isFavorite={favoriteIds.has(station.id)}
+              onToggle={onToggleFavorite}
             />
-          </button>
+          </div>
         );
       })}
     </div>
@@ -152,11 +251,15 @@ function StationList({
 function RecentStations({
   stations,
   selectedStation,
+  favoriteIds,
   onSelect,
+  onToggleFavorite,
 }: {
   stations: Station[];
   selectedStation: Station | null;
+  favoriteIds: Set<string>;
   onSelect: (station: Station) => void;
+  onToggleFavorite: (station: Station) => void;
 }) {
   if (stations.length === 0) return null;
 
@@ -172,26 +275,93 @@ function RecentStations({
         {stations.map((station) => {
           const active = selectedStation?.id === station.id;
           return (
-            <button
+            <div
               key={`recent-${station.id}`}
-              type="button"
-              onClick={() => onSelect(station)}
-              className={`rounded-lg border px-3 py-3 text-left transition duration-200 active:translate-y-[1px] ${
+              className={`flex items-center rounded-lg border pr-2 transition duration-200 ${
                 active
                   ? "border-accent-600 bg-accent-50 text-accent-700"
                   : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300 hover:bg-white"
               }`}
             >
-              <span className="block truncate text-sm font-medium">{station.name}</span>
-              <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-zinc-500">
-                <span>{station.state}</span>
-                <span>{formatAltitude(station.altitude)}</span>
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelect(station)}
+                className="min-w-0 flex-1 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-600 active:translate-y-[1px]"
+              >
+                <span className="block truncate text-sm font-medium">{station.name}</span>
+                <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-zinc-500">
+                  <span>{station.state}</span>
+                  <span>{formatAltitude(station.altitude)}</span>
+                </span>
+              </button>
+              <FavoriteButton
+                station={station}
+                isFavorite={favoriteIds.has(station.id)}
+                onToggle={onToggleFavorite}
+              />
+            </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function FavoriteStations({
+  stations,
+  selectedStation,
+  onSelect,
+  onToggleFavorite,
+}: {
+  stations: Station[];
+  selectedStation: Station | null;
+  onSelect: (station: Station) => void;
+  onToggleFavorite: (station: Station) => void;
+}) {
+  return (
+    <section aria-labelledby="favorite-stations-heading" className="mt-5 min-w-0 w-full border-t border-zinc-200 pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="favorite-stations-heading" className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+          Favoriten
+        </h2>
+        {stations.length > 0 ? <span className="font-mono text-xs text-zinc-400">{stations.length}</span> : null}
+      </div>
+
+      {stations.length === 0 ? (
+        <div className="mt-3 flex items-start gap-2.5 rounded-lg bg-zinc-50 px-3 py-3 text-xs leading-5 text-zinc-500">
+          <Star size={17} weight="regular" className="mt-0.5 shrink-0 text-zinc-400" aria-hidden="true" />
+          <p>Markiere Stationen über den Stern, um sie hier schnell wiederzufinden.</p>
+        </div>
+      ) : (
+        <div className="mt-3 max-h-64 space-y-2 overflow-y-auto overscroll-contain pr-1">
+          {stations.map((station) => {
+            const active = selectedStation?.id === station.id;
+            return (
+              <div
+                key={`favorite-${station.id}`}
+                className={`flex items-center rounded-lg border pr-2 transition duration-200 ${
+                  active
+                    ? "border-accent-600 bg-accent-50 text-accent-700"
+                    : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelect(station)}
+                  className="min-w-0 flex-1 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-600 active:translate-y-[1px]"
+                >
+                  <span className="block truncate text-sm font-medium">{station.name}</span>
+                  <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                    {station.state} · {formatAltitude(station.altitude)}
+                  </span>
+                </button>
+                <FavoriteButton station={station} isFavorite onToggle={onToggleFavorite} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -293,11 +463,15 @@ function WeatherPanel({
   station,
   series,
   onRefresh,
+  isFavorite,
+  onToggleFavorite,
   loading,
 }: {
   station: Station;
   series: TemperatureSeries;
   onRefresh: () => void;
+  isFavorite: boolean;
+  onToggleFavorite: (station: Station) => void;
   loading: boolean;
 }) {
   const latest = series.latest;
@@ -311,15 +485,24 @@ function WeatherPanel({
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">{station.name}</h1>
             <p className="mt-1 text-sm text-zinc-500">{station.state}</p>
           </div>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            className="rounded-md border border-zinc-200 p-2 text-zinc-600 transition duration-200 hover:border-accent-600 hover:text-accent-700 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
-            title="Daten neu laden"
-          >
-            <ArrowClockwise size={20} weight="bold" className={loading ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-1">
+            <FavoriteButton
+              station={station}
+              isFavorite={isFavorite}
+              onToggle={onToggleFavorite}
+              className="border-zinc-200"
+            />
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              className="rounded-md border border-zinc-200 p-2 text-zinc-600 transition duration-200 hover:border-accent-600 hover:text-accent-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Temperaturdaten neu laden"
+              title="Daten neu laden"
+            >
+              <ArrowClockwise size={20} weight="bold" className={loading ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <div className="mt-8 flex items-end gap-3">
@@ -359,6 +542,7 @@ export default function App() {
   const [stations, setStations] = useState<Station[]>([]);
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
   const [recentStations, setRecentStations] = useState<Station[]>([]);
+  const [favoriteStations, setFavoriteStations] = useState<Station[]>([]);
   const [series, setSeries] = useState<TemperatureSeries | null>(null);
   const [searchState, setSearchState] = useState<LoadState>("idle");
   const [dataState, setDataState] = useState<LoadState>("idle");
@@ -366,6 +550,7 @@ export default function App() {
 
   useEffect(() => {
     const savedStations = readRecentStations();
+    setFavoriteStations(readFavoriteStations());
     setRecentStations(savedStations);
     if (savedStations[0]) {
       setSelectedStation(savedStations[0]);
@@ -437,6 +622,17 @@ export default function App() {
     setQuery(station.name);
   }
 
+  function handleToggleFavorite(station: Station) {
+    setFavoriteStations((current) => {
+      const isFavorite = current.some((item) => item.id === station.id);
+      const updated = isFavorite
+        ? current.filter((item) => item.id !== station.id)
+        : [station, ...current.filter((item) => item.id !== station.id)];
+      writeFavoriteStations(updated);
+      return updated;
+    });
+  }
+
   function handleRefresh() {
     if (!selectedStation) return;
     setDataState("loading");
@@ -452,6 +648,10 @@ export default function App() {
   }
 
   const showInitial = !selectedStation && query.trim().length < 2;
+  const favoriteIds = useMemo(
+    () => new Set(favoriteStations.map((station) => station.id)),
+    [favoriteStations],
+  );
 
   return (
     <main className="min-h-[100dvh] bg-zinc-50 text-zinc-950">
@@ -492,13 +692,28 @@ export default function App() {
               </p>
             ) : null}
             {searchState === "ready" ? (
-              <StationList stations={stations} selectedStation={selectedStation} onSelect={handleStationSelect} />
+              <StationList
+                stations={stations}
+                selectedStation={selectedStation}
+                favoriteIds={favoriteIds}
+                onSelect={handleStationSelect}
+                onToggleFavorite={handleToggleFavorite}
+              />
             ) : null}
+
+            <FavoriteStations
+              stations={favoriteStations}
+              selectedStation={selectedStation}
+              onSelect={handleStationSelect}
+              onToggleFavorite={handleToggleFavorite}
+            />
 
             <RecentStations
               stations={recentStations}
               selectedStation={selectedStation}
+              favoriteIds={favoriteIds}
               onSelect={handleStationSelect}
+              onToggleFavorite={handleToggleFavorite}
             />
           </div>
         </aside>
@@ -527,6 +742,8 @@ export default function App() {
               station={selectedStation}
               series={series}
               onRefresh={handleRefresh}
+              isFavorite={favoriteIds.has(selectedStation.id)}
+              onToggleFavorite={handleToggleFavorite}
               loading={dataState === "loading"}
             />
           ) : null}
