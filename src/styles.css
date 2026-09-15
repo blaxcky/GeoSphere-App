@@ -38,3 +38,32 @@ input {
   background: #ccfbf1;
   color: #134e4a;
 }
+
+/* Modern design: app-like defaults */
+html[data-design="modern"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-design="modern"] body {
+  background: #f5f7fa;
+  min-height: 100dvh;
+  overscroll-behavior-y: contain;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
